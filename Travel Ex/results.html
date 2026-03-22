@@ -3,40 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your Travel Guide</title>
+    <title>AI Travel Guide - Results</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Plus Jakarta Sans', sans-serif; background: #0a0a0c; color: white; }
         .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.1); }
-        .accent-box { border-left: 4px solid #6366f1; background: rgba(99, 102, 241, 0.05); }
+        .accent-box { border-left: 4px solid #6366f1; background: rgba(99, 102, 241, 0.05); transition: 0.3s; }
+        .accent-box:hover { background: rgba(99, 102, 241, 0.1); transform: translateX(5px); }
+        .badge { background: #6366f1; color: white; padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+        .loader { border-top-color: #6366f1; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body class="p-4">
+
+    <div id="loadingScreen" class="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center space-y-4">
+        <div class="loader w-12 h-12 border-4 border-gray-700 rounded-full"></div>
+        <p class="text-indigo-400 font-bold animate-pulse" id="loadingText">AI is analyzing destination data...</p>
+    </div>
 
     <div class="max-w-md mx-auto space-y-6">
         <a href="index.html" class="text-indigo-400 font-bold flex items-center gap-2">← Back to Search</a>
 
         <!-- Main Identity -->
         <div class="glass rounded-[2rem] overflow-hidden">
-            <img id="resImg" class="w-full h-60 object-cover" src="">
+            <div class="relative">
+                <img id="resImg" class="w-full h-60 object-cover" src="https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=800&q=80">
+                <div id="visualBadge" class="hidden absolute top-4 left-4 badge">AI Identified</div>
+            </div>
             <div class="p-6">
-                <h1 id="mainTitle" class="text-3xl font-extrabold mb-2">Analyzing...</h1>
-                <p id="historyInfo" class="text-gray-400 text-sm leading-relaxed italic">Connecting to internet for historical facts...</p>
+                <h1 id="mainTitle" class="text-3xl font-extrabold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">Destination</h1>
+                <p id="historyInfo" class="text-gray-400 text-sm leading-relaxed italic">Generating historical context...</p>
             </div>
         </div>
 
         <!-- Smart Recommendation: What to Wear -->
         <div class="glass p-6 rounded-[2rem]">
-            <h2 class="text-lg font-black text-indigo-400 mb-3 flex items-center gap-2">👕 WHAT TO WEAR</h2>
-            <p id="clothingAdvice" class="text-sm text-gray-300 bg-white/5 p-4 rounded-xl"></p>
+            <h2 class="text-lg font-black text-indigo-400 mb-3 flex items-center gap-2">👕 AI CLOTHING ADVICE</h2>
+            <p id="clothingAdvice" class="text-sm text-gray-300 bg-white/5 p-4 rounded-xl border border-white/10"></p>
         </div>
 
         <!-- Recommendations: Places to Visit -->
         <div class="space-y-4">
-            <h2 class="text-lg font-black text-purple-400 px-2">📍 TOP PLACES TO VISIT HERE</h2>
-            <div id="placeList" class="space-y-3">
-                <!-- Recommendations will be injected here -->
+            <h2 id="recHeading" class="text-lg font-black text-purple-400 px-2 uppercase tracking-widest">📍 TOP PLACES</h2>
+            <div id="placeList" class="space-y-3 pb-10">
+                <!-- AI Generated Items will appear here -->
             </div>
         </div>
     </div>
@@ -44,57 +56,87 @@
     <script>
         window.onload = async function() {
             const data = JSON.parse(localStorage.getItem('tripData'));
-            if(!data) return;
+            if(!data) {
+                window.location.href = 'index.html';
+                return;
+            }
 
-            document.getElementById('resImg').src = data.photo || "https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=800&q=80";
+            // 1. Identify primary search term
+            const locationName = data.state ? `${data.state}, ${data.country}` : data.country;
+            const searchSubject = data.gps || locationName || "Famous Travel Landmarks";
             
-            // Logic: Search for State info first, then GPS, then Country
-            const query = data.state || data.gps || data.country;
-            document.getElementById('mainTitle').innerText = query;
+            document.getElementById('mainTitle').innerText = searchSubject;
+            if(data.photo) document.getElementById('resImg').src = data.photo;
+            if(data.photo) document.getElementById('visualBadge').classList.remove('hidden');
 
-            // 1. Fetch History from Wikipedia API
+            // 2. Fetch History using Wikipedia API
             try {
-                const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`);
-                const wiki = await res.json();
-                document.getElementById('historyInfo').innerText = wiki.extract || "A region rich in culture and geographical diversity.";
-            } catch (e) { document.getElementById('historyInfo').innerText = "Historical significance details are available in local archives."; }
+                document.getElementById('loadingText').innerText = "Fetching historical records...";
+                const wikiRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(searchSubject)}`);
+                const wikiData = await wikiRes.json();
+                document.getElementById('historyInfo').innerText = wikiData.extract || `Information about ${searchSubject} is currently being compiled from global databases.`;
+            } catch (e) {
+                document.getElementById('historyInfo').innerText = "History data currently unavailable.";
+            }
 
-            // 2. Clothing Advice Logic
-            const wear = {
-                Cold: "Pack heavy woolens, thermal inner-wear, waterproof boots, and gloves. Layering is key to surviving the low temperatures.",
-                Tropical: "Lightweight cotton or linen clothes. Don't forget swimwear, sunglasses, a wide-brimmed hat, and high-SPF sunscreen.",
-                Moderate: "Casual layers like t-shirts with a light jacket or hoodie. Comfortable sneakers are a must for exploring.",
-                Desert: "Breathable, loose-fitting clothes that cover your skin. A scarf to protect from sand/sun and sturdy sandals."
-            };
-            document.getElementById('clothingAdvice').innerText = wear[data.climate];
+            // 3. AI Generated Recommendations (Dynamic based on Interest)
+            await generateAIRecommendations(searchSubject, data.interest);
 
-            // 3. Specific Place Recommendations Logic
-            // In a real app, this would hit a Google Places API. 
-            // For this two-file version, we use a smart generator based on "Interest".
-            const recs = {
-                Historical: [
-                    { name: "Old Quarter Museum", desc: "Showcases centuries of local architecture and artifacts." },
-                    { name: "Central Heritage Plaza", desc: "A famous landmark where major historical events occurred." }
-                ],
-                Nature: [
-                    { name: "Green Valley Trails", desc: "Scenic hiking paths with panoramic views of the region." },
-                    { name: "Riverside Eco Park", desc: "Perfect for bird watching and experiencing local flora." }
-                ],
-                Urban: [
-                    { name: "The Grand Skydeck", desc: "The highest point in the city for a modern view." },
-                    { name: "Metro Shopping District", desc: "A hub for modern fashion, food, and local crafts." }
-                ]
-            };
+            // 4. Smart Clothing Logic
+            generateClothingAdvice(data.climate);
 
-            const list = document.getElementById('placeList');
-            const selectedRecs = recs[data.interest];
-            list.innerHTML = selectedRecs.map(p => `
-                <div class="glass p-5 rounded-2xl accent-box">
-                    <h4 class="font-bold text-white">${p.name}</h4>
-                    <p class="text-xs text-gray-500 mt-1">${p.desc}</p>
-                </div>
-            `).join('');
+            // Hide Loader
+            document.getElementById('loadingScreen').classList.add('hidden');
         };
+
+        async function generateAIRecommendations(location, interest) {
+            const list = document.getElementById('placeList');
+            document.getElementById('loadingText').innerText = `Finding best ${interest} spots...`;
+            document.getElementById('recHeading').innerText = `📍 TOP ${interest} RECOMMENDATIONS`;
+
+            try {
+                // We use Wikipedia Search API to find places related to interest + location
+                const query = `${interest} attractions in ${location}`;
+                const searchRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&origin=*`);
+                const searchData = await searchRes.json();
+                
+                const results = searchData.query.search.slice(0, 4); // Get top 4 results
+
+                if(results.length === 0) {
+                    list.innerHTML = `<p class="text-gray-500 italic p-4">No specific ${interest} spots found for this location.</p>`;
+                    return;
+                }
+
+                let html = '';
+                for(let item of results) {
+                    // Fetch a clean summary for each result
+                    const pageRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(item.title)}`);
+                    const pageData = await pageRes.json();
+                    
+                    html += `
+                        <div class="glass p-5 rounded-2xl accent-box">
+                            <h4 class="font-bold text-white text-lg">${item.title}</h4>
+                            <p class="text-xs text-gray-400 mt-2 line-clamp-3">${pageData.extract || 'Explore the unique local heritage and architecture of this landmark.'}</p>
+                            <a href="https://en.wikipedia.org/wiki/${encodeURIComponent(item.title)}" target="_blank" class="text-[10px] text-indigo-400 mt-3 inline-block font-bold">READ FULL AI REPORT →</a>
+                        </div>
+                    `;
+                }
+                list.innerHTML = html;
+
+            } catch (e) {
+                list.innerHTML = `<p class="text-red-400 p-4">Error connecting to AI nodes.</p>`;
+            }
+        }
+
+        function generateClothingAdvice(climate) {
+            const advice = {
+                Cold: "⚠️ AI ALERT: High Cold Index. Recommended: Heavy down jackets, thermal layers (merino wool), waterproof boots, and tech-fleece gloves. Avoid cotton as it holds moisture.",
+                Tropical: "☀️ AI ALERT: High Humidity/Heat. Recommended: Ultra-light linen fabrics, moisture-wicking activewear, and open-toe breathable sandals. Pack SPF 50+.",
+                Moderate: "🌤️ AI ALERT: Variable Conditions. Recommended: Smart layering. A light windbreaker, comfortable walking sneakers, and versatile denim or chinos.",
+                Desert: "🏜️ AI ALERT: Extreme Aridity. Recommended: Loose-fitting long sleeves (protection from UV), polarized sunglasses, and a wide-brimmed hat. Hydration pack is essential."
+            };
+            document.getElementById('clothingAdvice').innerText = advice[climate] || "Check immediate 24h weather before departure.";
+        }
     </script>
 </body>
 </html>
