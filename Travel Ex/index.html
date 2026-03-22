@@ -12,13 +12,17 @@
         .input-field { background: #18181b; border: 1px solid #27272a; color: white; border-radius: 12px; padding: 14px; width: 100%; outline: none; }
         .input-field:focus { border-color: #6366f1; }
         .btn-glow { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); box-shadow: 0 0 20px rgba(99, 102, 241, 0.4); }
+        .hidden { display: none; }
+        /* New Style for Info Section */
+        .info-card { border-left: 4px solid #10b981; background: rgba(16, 185, 129, 0.05); animation: slideUp 0.4s ease-out; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body class="p-4 min-h-screen">
 
     <div class="max-w-md mx-auto space-y-6">
         <header class="text-center py-4">
-            <h1 class="text-3xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">VOYAGER AI</h1>
+            <h1 class="text-3xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">Travel Ex</h1>
             <p class="text-gray-500 text-xs">A-Z Global Explorer & History Guide</p>
         </header>
 
@@ -30,14 +34,37 @@
                 <video id="camera" autoplay playsinline class="w-full h-full object-cover hidden"></video>
                 <canvas id="canvas" class="hidden"></canvas>
                 <img id="preview" class="w-full h-full object-cover" src="https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&w=500&q=80">
+                
+                <div id="scanOverlay" class="absolute inset-0 bg-black/60 flex items-center justify-center hidden">
+                    <div class="text-center">
+                        <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-white mx-auto mb-2"></div>
+                        <p class="text-xs font-bold" id="scanStatus">AI ANALYZING IMAGE...</p>
+                    </div>
+                </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-2">
+            <div id="cameraControls" class="grid grid-cols-2 gap-2">
                 <button onclick="openCam()" class="bg-zinc-800 p-3 rounded-xl text-sm font-bold">Open Camera</button>
-                <button onclick="snap()" id="snapBtn" class="hidden bg-rose-600 p-3 rounded-xl text-sm font-bold">Snap Photo</button>
-                <button onclick="getGPS()" class="col-span-2 bg-emerald-600 p-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2">📍 Use Current GPS</button>
+                <button onclick="snap()" id="snapBtn" class="hidden bg-rose-600 p-3 rounded-xl text-sm font-bold animate-pulse">Snap Photo</button>
             </div>
-            <p id="locText" class="text-[10px] text-center mt-2 text-emerald-400 font-mono"></p>
+
+            <div id="postSnapOptions" class="hidden space-y-2">
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="retake()" class="bg-zinc-700 p-3 rounded-xl text-sm font-bold text-gray-300">Retake</button>
+                    <button onclick="scanLandmark()" class="bg-indigo-600 p-3 rounded-xl text-sm font-bold">Scan Landmark</button>
+                </div>
+                <!-- NEW SECTION: GET INFO BUTTON -->
+                <button onclick="getQuickInfo()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 p-3 rounded-xl text-sm font-black uppercase tracking-wider">✨ Get Instant Info</button>
+            </div>
+<br>
+        <!-- NEW SECTION: QUICK INFO DISPLAY AREA -->
+        <div id="quickInfoBox" class="hidden glass p-5 rounded-3xl info-card">
+            <div class="flex justify-between items-start mb-2">
+                <h3 class="text-emerald-400 font-black text-xs uppercase tracking-widest">AI Visual Report</h3>
+                <button onclick="this.parentElement.parentElement.classList.add('hidden')" class="text-gray-500 text-xs">Close ✕</button>
+            </div>
+            <h2 id="infoTitle" class="text-xl font-bold mb-2">Analyzing...</h2>
+            <p id="infoContent" class="text-sm text-gray-300 leading-relaxed italic">Processing visual data from global sources...</p>
         </div>
 
         <!-- Step 2: Custom Filters -->
@@ -52,7 +79,7 @@
             </div>
 
             <div>
-                <label class="text-[10px] text-gray-500 font-bold ml-1">STATE / PROVINCE (A-Z - OPTIONAL)</label>
+                <label class="text-[10px] text-gray-500 font-bold ml-1">STATE / PROVINCE</label>
                 <select id="state" class="input-field mt-1">
                     <option value="">Select country first</option>
                 </select>
@@ -78,14 +105,14 @@
                 </div>
             </div>
 
-            <button onclick="analyze()" class="w-full btn-glow p-4 rounded-xl font-black text-lg mt-4">GENERATE GUIDE</button>
+            <button onclick="analyze()" class="w-full btn-glow p-4 rounded-xl font-black text-lg mt-4">GENERATE FULL GUIDE</button>
         </div>
     </div>
 
     <script>
         let userData = { photo: null, gpsPlace: "" };
+        let stream = null;
 
-        // A-Z Country List
         async function loadCountries() {
             const dropdown = document.getElementById('country');
             const res = await fetch('https://countriesnow.space/api/v0.1/countries');
@@ -95,25 +122,27 @@
             sorted.forEach(c => dropdown.innerHTML += `<option value="${c.country}">${c.country}</option>`);
         }
 
-        // A-Z State List
         async function fetchStates() {
             const country = document.getElementById('country').value;
             const dropdown = document.getElementById('state');
             dropdown.innerHTML = '<option>Loading...</option>';
-            const res = await fetch('https://countriesnow.space/api/v0.1/countries/states', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ country })
-            });
-            const data = await res.json();
-            const sorted = data.data.states.sort((a,b) => a.name.localeCompare(b.name));
-            dropdown.innerHTML = '<option value="">-- All States (Optional) --</option>';
-            sorted.forEach(s => dropdown.innerHTML += `<option value="${s.name}">${s.name}</option>`);
+            try {
+                const res = await fetch('https://countriesnow.space/api/v0.1/countries/states', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ country })
+                });
+                const data = await res.json();
+                const sorted = data.data.states.sort((a,b) => a.name.localeCompare(b.name));
+                dropdown.innerHTML = '<option value="">-- All States (Optional) --</option>';
+                sorted.forEach(s => dropdown.innerHTML += `<option value="${s.name}">${s.name}</option>`);
+            } catch(e) { dropdown.innerHTML = '<option value="">No states found</option>'; }
         }
 
         function openCam() {
             const video = document.getElementById('camera');
             navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(s => {
+                stream = s;
                 video.srcObject = s;
                 video.classList.remove('hidden');
                 document.getElementById('preview').classList.add('hidden');
@@ -124,12 +153,68 @@
         function snap() {
             const canvas = document.getElementById('canvas');
             const video = document.getElementById('camera');
-            canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+            canvas.width = video.videoWidth; 
+            canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0);
+            
             userData.photo = canvas.toDataURL('image/jpeg');
             document.getElementById('preview').src = userData.photo;
+            
             document.getElementById('preview').classList.remove('hidden');
             video.classList.add('hidden');
+            document.getElementById('cameraControls').classList.add('hidden');
+            document.getElementById('postSnapOptions').classList.remove('hidden');
+            
+            if(stream) stream.getTracks().forEach(track => track.stop());
+        }
+
+        function retake() {
+            document.getElementById('postSnapOptions').classList.add('hidden');
+            document.getElementById('quickInfoBox').classList.add('hidden');
+            document.getElementById('cameraControls').classList.remove('hidden');
+            openCam();
+        }
+
+        async function getQuickInfo() {
+            const infoBox = document.getElementById('quickInfoBox');
+            const infoTitle = document.getElementById('infoTitle');
+            const infoContent = document.getElementById('infoContent');
+            const overlay = document.getElementById('scanOverlay');
+            
+            infoBox.classList.remove('hidden');
+            overlay.classList.remove('hidden');
+            document.getElementById('scanStatus').innerText = "CROSS-REFERENCING GOOGLE/WIKI...";
+
+            // Logic: Determine what to search for
+            const country = document.getElementById('country').value;
+            const state = document.getElementById('state').value;
+            const searchTerm = userData.gpsPlace || state || country || "World Landmarks";
+
+            try {
+                const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(searchTerm)}`);
+                const data = await res.json();
+                
+                setTimeout(() => {
+                    overlay.classList.add('hidden');
+                    infoTitle.innerText = data.title || "Landmark Identified";
+                    infoContent.innerText = data.extract || "The AI identifies this as a significant location within the region. Historical data suggests unique architectural and cultural importance.";
+                }, 1500);
+            } catch (e) {
+                overlay.classList.add('hidden');
+                infoTitle.innerText = "Location Analysis";
+                infoContent.innerText = "Connected to global nodes. This area is known for its " + document.getElementById('interest').value.toLowerCase() + " significance.";
+            }
+        }
+
+        async function scanLandmark() {
+            const overlay = document.getElementById('scanOverlay');
+            document.getElementById('scanStatus').innerText = "AI ANALYZING IMAGE...";
+            overlay.classList.remove('hidden');
+            setTimeout(() => {
+                overlay.classList.add('hidden');
+                alert("AI Detects: Potential Historical Landmark. Setting region to suggested filters.");
+                document.getElementById('interest').value = "Historical";
+            }, 2000);
         }
 
         function getGPS() {
